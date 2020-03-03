@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +23,7 @@ import org.springframework.web.servlet.ModelAndView;
 import curso.springboot.model.Pessoa;
 import curso.springboot.model.Telefone;
 import curso.springboot.repository.PessoaRepository;
+import curso.springboot.repository.ProfissaoRepository;
 import curso.springboot.repository.TelefoneRepository;
 
 @Controller
@@ -31,6 +34,12 @@ public class PessoaController {
 	
 	@Autowired
 	private TelefoneRepository telefoneRepository;
+	
+	@Autowired
+	private ReportUtil reportUtil;
+	
+	@Autowired
+	private ProfissaoRepository profissaoRepository;
 
 	@RequestMapping(method = RequestMethod.GET, value = "/cadastropessoa")
 	public ModelAndView inicio() {
@@ -38,6 +47,7 @@ public class PessoaController {
 		modelAndView.addObject("pessoaobj", new Pessoa());
 		Iterable<Pessoa> pessoasIt = pessoarepository.findAll();
 		modelAndView.addObject("pessoas", pessoasIt);
+		modelAndView.addObject("profissoes", profissaoRepository.findAll());
 		return modelAndView;
 	}
 
@@ -60,6 +70,7 @@ public class PessoaController {
 			}
 			
 			modelAndView.addObject("msg", msg);
+			modelAndView.addObject("profissoes", profissaoRepository.findAll());//carrega as informaçoes no combo de profissoes
 			return modelAndView;
 		}
 		
@@ -69,6 +80,7 @@ public class PessoaController {
 		Iterable<Pessoa> pessoasIt = pessoarepository.findAll();
 		andView.addObject("pessoas", pessoasIt);
 		andView.addObject("pessoaobj", new Pessoa());
+		andView.addObject("profissoes", profissaoRepository.findAll());//carrega as informaçoes no combo de profissoes
 
 		return andView;
 	}
@@ -91,6 +103,7 @@ public class PessoaController {
 		Optional<Pessoa> pessoa = pessoarepository.findById(idpessoa);
 		ModelAndView modelAndView = new ModelAndView("cadastro/cadastropessoa");
 		modelAndView.addObject("pessoaobj", pessoa.get());
+		modelAndView.addObject("profissoes", profissaoRepository.findAll());
 		return modelAndView;
 	}
 
@@ -119,8 +132,43 @@ public class PessoaController {
 		ModelAndView modelAndView = new ModelAndView("cadastro/cadastropessoa");
 		modelAndView.addObject("pessoas", pessoas);
 		modelAndView.addObject("pessoaobj", new Pessoa());
+		modelAndView.addObject("profissoes", profissaoRepository.findAll());
 		return modelAndView;
 	}
+	
+	@GetMapping("**/pesquisarpessoa")
+	public void imprimePdf(@RequestParam("nomepesquisa") String nomepesquisa,
+			@RequestParam("pesqsexo") String pesqsexo, HttpServletRequest request, HttpServletResponse response) throws Exception{
+		
+		List<Pessoa> pessoas = new ArrayList<Pessoa>();
+		if (pesqsexo != null && !pesqsexo.isEmpty() && nomepesquisa != null && !nomepesquisa.isEmpty()) {//busca por nome e sexo
+			pessoas = pessoarepository.findPessoasByNameSexo(nomepesquisa, pesqsexo);
+		}else if (nomepesquisa != null && !nomepesquisa.isEmpty()) {//busca somente pelo nome
+			pessoas = pessoarepository.findPessoasByName(nomepesquisa);
+		}else if (pesqsexo != null && !pesqsexo.isEmpty()) {//busca somente pelo sexo
+			pessoas = pessoarepository.findPessoasBySexo(pesqsexo);
+		}else {//busca todos
+			Iterable<Pessoa> iterator = pessoarepository.findAll();
+			for (Pessoa pessoa : iterator) {
+				pessoas.add(pessoa);
+				
+			}
+		}
+		
+		//chama o serviço que gera o relatório
+ 		byte[] pdf = reportUtil.gerarReltorio(pessoas, "pessoa", request.getServletContext());
+ 		//tamanho da resposta para o navegador
+ 		response.setContentLength(pdf.length);
+ 		//Define o tipo e arquivo que o navegador vai ler
+ 		response.setContentType("application/octet-stream");
+ 		//cabeçalho do relatório no navegador
+ 		String headerKey = "Content-Disposition";
+ 		String headerValeu = String.format("attachment; filename=\"%s\"", "relatorio.pdf");
+ 		response.setHeader(headerKey, headerValeu);
+ 		//finaliza o relatório no navegador
+ 		response.getOutputStream().write(pdf);
+	}
+	
 	
 	@GetMapping("/telefones/{idpessoa}")
 	public ModelAndView telefones(@PathVariable("idpessoa") Long idpessoa) {
